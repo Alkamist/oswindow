@@ -47,6 +47,7 @@ type
     isOpen*: bool
     isFloatingChild*: bool
     isEmbeddedChild*: bool
+    isDecorated*: bool
     isHovered*: bool
     wasHovered*: bool
     xPixels*: int
@@ -69,10 +70,10 @@ type
     mouseWheelY*: float
     mousePresses*: seq[MouseButton]
     mouseReleases*: seq[MouseButton]
-    mouseIsDown*: array[MouseButton, bool]
+    mouseDownStates*: array[MouseButton, bool]
     keyPresses*: seq[KeyboardKey]
     keyReleases*: seq[KeyboardKey]
-    keyIsDown*: array[KeyboardKey, bool]
+    keyDownStates*: array[KeyboardKey, bool]
     textInput*: string
 
 template defineOsWindowBaseProcs*(T: typedesc): untyped {.dirty.} =
@@ -119,19 +120,27 @@ template defineOsWindowBaseProcs*(T: typedesc): untyped {.dirty.} =
   proc mouseWheelY*(window: T): float = window.state.mouseWheelY
   proc mousePresses*(window: T): seq[MouseButton] = window.state.mousePresses
   proc mouseReleases*(window: T): seq[MouseButton] = window.state.mouseReleases
-  proc mouseIsDown*(window: T, button: MouseButton): bool = window.state.mouseIsDown[button]
+  proc mouseIsDown*(window: T, button: MouseButton): bool = window.state.mouseDownStates[button]
   proc keyPresses*(window: T): seq[KeyboardKey] = window.state.keyPresses
   proc keyReleases*(window: T): seq[KeyboardKey] = window.state.keyReleases
-  proc keyIsDown*(window: T, key: KeyboardKey): bool = window.state.keyIsDown[key]
+  proc keyIsDown*(window: T, key: KeyboardKey): bool = window.state.keyDownStates[key]
   proc textInput*(window: T): string = window.state.textInput
 
   proc justMoved*(window: T): bool = window.state.xPixels != window.state.previousXPixels or window.state.yPixels != window.state.previousYPixels
   proc x*(window: T): float = window.state.xPixels.float / window.state.pixelDensity
+  proc deltaX*(window: T): float = (window.state.xPixels - window.state.previousXPixels).float / window.state.pixelDensity
+  proc deltaXPixels*(window: T): int = window.state.xPixels - window.state.previousXPixels
   proc y*(window: T): float = window.state.yPixels.float / window.state.pixelDensity
+  proc deltaY*(window: T): float = (window.state.yPixels - window.state.previousYPixels).float / window.state.pixelDensity
+  proc deltaYPixels*(window: T): int = window.state.yPixels - window.state.previousYPixels
 
   proc justResized*(window: T): bool = window.state.widthPixels != window.state.previousWidthPixels or window.state.heightPixels != window.state.previousHeightPixels
   proc width*(window: T): float = window.state.widthPixels.float / window.state.pixelDensity
+  proc deltaWidth*(window: T): float = (window.state.widthPixels - window.state.previousWidthPixels).float / window.state.pixelDensity
+  proc deltaWidthPixels*(window: T): int = window.state.widthPixels - window.state.previousWidthPixels
   proc height*(window: T): float = window.state.heightPixels.float / window.state.pixelDensity
+  proc deltaHeight*(window: T): float = (window.state.heightPixels - window.state.previousHeightPixels).float / window.state.pixelDensity
+  proc deltaHeightPixels*(window: T): int = window.state.heightPixels - window.state.previousHeightPixels
 
   proc deltaTime*(window: T): float = window.state.time - window.state.previousTime
 
@@ -139,6 +148,12 @@ template defineOsWindowBaseProcs*(T: typedesc): untyped {.dirty.} =
   proc scale*(window: T): float = 1.0 / window.state.pixelDensity
   proc aspectRatio*(window: T): float = window.state.widthPixels / window.state.heightPixels
 
+  proc mouseX*(window: T): float = window.state.mouseXPixels.float / window.state.pixelDensity
+  proc mouseDeltaX*(window: T): float = (window.state.mouseXPixels - window.state.previousMouseXPixels).float / window.state.pixelDensity
+  proc mouseDeltaXPixels*(window: T): int = window.state.mouseXPixels - window.state.previousMouseXPixels
+  proc mouseY*(window: T): float = window.state.mouseYPixels.float / window.state.pixelDensity
+  proc mouseDeltaY*(window: T): float = (window.state.mouseYPixels - window.state.previousMouseYPixels).float / window.state.pixelDensity
+  proc mouseDeltaYPixels*(window: T): int = window.state.mouseYPixels - window.state.previousMouseYPixels
   proc mouseJustMoved*(window: T): bool = window.state.mouseXPixels != window.state.previousMouseXPixels or window.state.mouseYPixels != window.state.previousMouseYPixels
   proc mouseWheelJustMoved*(window: T): bool = window.state.mouseWheelX != 0.0 or window.state.mouseWheelY != 0.0
   proc mouseJustPressed*(window: T, button: MouseButton): bool = button in window.state.mousePresses

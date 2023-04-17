@@ -113,17 +113,22 @@ proc setPosition*(window: OsWindow, x, y: int) =
 proc setSize*(window: OsWindow, width, height: int) =
   SetWindowPos(window.hwnd, 0, 0, 0, width.int32, height.int32, SWP_NOACTIVATE or SWP_NOOWNERZORDER or SWP_NOMOVE or SWP_NOZORDER)
 
+proc setDecorated*(window: OsWindow, decorated: bool) =
+  window.state.isDecorated = decorated
+
 proc embedInsideWindow*(window: OsWindow, parent: pointer) =
   if not window.state.isEmbeddedChild:
     SetWindowLongPtr(window.hwnd, GWL_STYLE, WS_CHILDWINDOW or WS_CLIPSIBLINGS)
     window.state.isEmbeddedChild = true
-  SetWindowPos(
-    window.hwnd,
-    HWND_TOPMOST,
-    window.state.xPixels.int32, window.state.yPixels.int32,
-    window.state.widthPixels.int32, window.state.heightPixels.int32,
-    SWP_SHOWWINDOW,
-  )
+    window.state.isFloatingChild = false
+    window.setDecorated(false)
+    SetWindowPos(
+      window.hwnd,
+      HWND_TOPMOST,
+      window.state.xPixels.int32, window.state.yPixels.int32,
+      window.state.widthPixels.int32, window.state.heightPixels.int32,
+      SWP_SHOWWINDOW,
+    )
   SetParent(window.hwnd, cast[HWND](parent))
 
 proc show*(window: OsWindow) =
@@ -199,12 +204,13 @@ proc newOsWindow*(parentHandle: pointer = nil): OsWindow =
     lpParam = cast[pointer](result),
   )
   result.state.isOpen = true
+  result.state.isDecorated = true
   result.handle = cast[pointer](hwnd)
 
   discard SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 
   result.updateBounds()
-  result.setMouseCursorStyle(Arrow)
+  # result.setMouseCursorStyle(Arrow)
 
   result.initOpenGlContext()
   result.makeContextCurrent()
@@ -422,30 +428,31 @@ proc windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT 
     SetCapture(window.hwnd)
     let button = toMouseButton(msg, wParam)
     window.state.mousePresses.add button
-    window.state.mouseIsDown[button] = true
+    window.state.mouseDownStates[button] = true
 
   of WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP, WM_XBUTTONUP:
     ReleaseCapture()
     let button = toMouseButton(msg, wParam)
     window.state.mouseReleases.add button
-    window.state.mouseIsDown[button] = false
+    window.state.mouseDownStates[button] = false
 
   of WM_KEYDOWN, WM_SYSKEYDOWN:
     let key = toKeyboardKey(wParam, lParam)
     window.state.keyPresses.add key
-    window.state.keyIsDown[key] = true
+    window.state.keyDownStates[key] = true
 
   of WM_KEYUP, WM_SYSKEYUP:
     let key = toKeyboardKey(wParam, lParam)
     window.state.keyReleases.add key
-    window.state.keyIsDown[key] = false
+    window.state.keyDownStates[key] = false
 
   of WM_CHAR, WM_SYSCHAR:
     if wParam > 0 and wParam < 0x10000:
       window.state.textInput &= cast[Rune](wParam).toUTF8
 
-  # of WM_NCCALCSIZE:
-  #   return 0
+  of WM_NCCALCSIZE:
+    if not window.state.isDecorated:
+      return 0
 
   # of WM_NCHITTEST:
   #   const topBorder = 27

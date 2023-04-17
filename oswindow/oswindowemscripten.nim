@@ -94,12 +94,12 @@ proc onResize(eventType: cint, uiEvent: ptr EmscriptenUiEvent, userData: pointer
 proc mousePressProc(button: int) {.exportc.} =
   let button = button.toMouseButton()
   mainWindow.state.mousePresses.add button
-  mainWindow.state.mouseIsDown[button] = true
+  mainWindow.state.mouseDownStates[button] = true
 
 proc mouseReleaseProc(button: int) {.exportc.} =
   let button = button.toMouseButton()
   mainWindow.state.mouseReleases.add button
-  mainWindow.state.mouseIsDown[button] = false
+  mainWindow.state.mouseDownStates[button] = false
 
 proc mouseMoveProc(clientX, clientY: cint) {.exportc.} =
   mainWindow.state.mouseXPixels = clientX
