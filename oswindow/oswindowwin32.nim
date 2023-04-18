@@ -143,17 +143,18 @@ proc close*(window: OsWindow) =
     DestroyWindow(window.hwnd)
 
 template renderFrameWithoutPollingEvents(window: OsWindow): untyped {.dirty.} =
-  window.makeContextCurrent()
-  glClear(GL_COLOR_BUFFER_BIT)
+  if window.isOpen:
+    window.makeContextCurrent()
+    glClear(GL_COLOR_BUFFER_BIT)
 
-  if window.mouseEntered:
-    window.setMouseCursorStyle(Arrow)
+    if window.mouseEntered:
+      window.setMouseCursorStyle(Arrow)
 
-  if window.onFrame != nil:
-    window.onFrame()
+    if window.onFrame != nil:
+      window.onFrame()
 
-  SwapBuffers(window.hdc)
-  window.updateState(cpuTime())
+    SwapBuffers(window.hdc)
+    window.updateState(cpuTime())
 
 proc process*(window: OsWindow) =
   if not (window.isFloatingChild or window.isEmbeddedChild):
