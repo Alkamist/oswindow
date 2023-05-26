@@ -2,12 +2,7 @@
 {.experimental: "codeReordering".}
 
 import std/unicode; export unicode
-import winim/lean as win32
-
-const WM_DPICHANGED = 0x02E0
-const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-proc SetProcessDpiAwarenessContext(value: int): BOOL {.discardable, stdcall, dynlib: "user32", importc.}
-proc GetDpiForWindow(hWnd: HWND): UINT {.discardable, stdcall, dynlib: "user32", importc.}
+import ./win32api
 
 type
   ChildStatus* = enum
@@ -55,8 +50,9 @@ type
     PadMultiply, PadSubtract, PadAdd, PadEnter,
     PadPeriod, PrintScreen,
 
-  OsWindow* = ptr OsWindowObj
+  OsWindow* = ref OsWindowObj
   OsWindowObj* = object
+    userData*: pointer
     onClose*: proc(window: OsWindow)
     onMove*: proc(window: OsWindow, x, y: int)
     onResize*: proc(window: OsWindow, width, height: int)
@@ -76,49 +72,54 @@ type
     childStatus*: ChildStatus
     m_cursorX: int
     m_cursorY: int
-    m_hwnd: win32.HWND
-    m_hdc: win32.HDC
-    m_hglrc: win32.HGLRC
+    m_hwnd: HWND
+    m_hdc: HDC
+    m_hglrc: HGLRC
 
 var windowCount = 0
 const windowClassName = "DefaultWindowClass"
 
-proc openOsWindow*(parentHandle: pointer = nil): OsWindow =
-  result = create(OsWindowObj)
+proc `=destroy`*(window: var OsWindowObj) =
+  if window.isOpen:
+    window.isOpen = false
+    DestroyWindow(window.m_hwnd)
 
-  var hinstance = win32.GetModuleHandle(nil)
+proc new*(T: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
+  result = OsWindow()
+
+  var hinstance = GetModuleHandleA(nil)
 
   if windowCount == 0:
-    var windowClass = win32.WNDCLASSEX(
-      cbSize: win32.UINT(sizeof(win32.WNDCLASSEX)),
-      style: win32.CS_OWNDC,
+    var windowClass = WNDCLASSEXA(
+      cbSize: UINT(sizeof(WNDCLASSEXA)),
+      style: CS_OWNDC,
       lpfnWndProc: windowProc,
       hInstance: hinstance,
-      hCursor: win32.LoadCursor(0, win32.IDC_ARROW),
+      hCursor: LoadCursorA(nil, IDC_ARROW),
       lpszClassName: windowClassName,
     )
-    win32.RegisterClassEx(addr(windowClass))
+    RegisterClassExA(addr(windowClass))
 
-  var windowStyle = win32.WS_OVERLAPPEDWINDOW
+  var windowStyle = WS_OVERLAPPEDWINDOW
   if parentHandle != nil:
     result.childStatus = Floating
-    windowStyle = windowStyle or win32.WS_POPUP
+    windowStyle = windowStyle or int(WS_POPUP)
 
-  result.m_hwnd = win32.CreateWindowEx(
+  result.m_hwnd = CreateWindowExA(
     0,
     windowClassName,
     nil,
-    win32.DWORD(windowStyle),
-    win32.DWORD(win32.CW_USEDEFAULT),
-    win32.DWORD(win32.CW_USEDEFAULT),
-    win32.DWORD(win32.CW_USEDEFAULT),
-    win32.DWORD(win32.CW_USEDEFAULT),
+    DWORD(windowStyle),
+    cint(CW_USEDEFAULT),
+    cint(CW_USEDEFAULT),
+    cint(CW_USEDEFAULT),
+    cint(CW_USEDEFAULT),
     GetDesktopWindow(),
-    0,
+    nil,
     hinstance,
-    result,
+    cast[pointer](result),
   )
-  if result.m_hwnd == 0:
+  if result.m_hwnd == nil:
     echo "Failed to open window."
 
   result.isOpen = true
@@ -134,54 +135,54 @@ proc openOsWindow*(parentHandle: pointer = nil): OsWindow =
 proc close*(window: OsWindow) =
   if window.isOpen:
     window.isOpen = false
-    win32.DestroyWindow(window.m_hwnd)
+    DestroyWindow(window.m_hwnd)
 
 proc pollEvents*(window: OsWindow) =
   if window.childStatus == None:
-    var msg: win32.MSG
-    while win32.PeekMessage(addr(msg), window.m_hwnd, 0, 0, win32.PM_REMOVE) != win32.FALSE:
-      win32.TranslateMessage(addr(msg))
-      win32.DispatchMessage(addr(msg))
+    var msg: MSG
+    while PeekMessageA(addr(msg), window.m_hwnd, 0, 0, PM_REMOVE) != FALSE:
+      TranslateMessage(addr(msg))
+      DispatchMessageA(addr(msg))
 
 proc swapBuffers*(window: OsWindow) =
-  win32.SwapBuffers(window.m_hdc)
+  SwapBuffers(window.m_hdc)
 
 proc makeContextCurrent*(window: OsWindow) =
-  win32.wglMakeCurrent(window.m_hdc, window.m_hglrc)
+  wglMakeCurrent(window.m_hdc, window.m_hglrc)
 
 proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
-  win32.SetCursor(win32.LoadCursor(0, style.toWin32CursorStyle))
+  SetCursor(LoadCursorA(nil, style.toWin32CursorStyle))
 
 proc cursorPosition*(window: OsWindow): (int, int) =
-  var pos: win32.POINT
-  if win32.GetCursorPos(addr(pos)):
-    win32.ScreenToClient(window.m_hwnd, addr(pos))
+  var pos: POINT
+  if GetCursorPos(addr(pos)) == TRUE:
+    ScreenToClient(window.m_hwnd, addr(pos))
     return (int(pos.x), int(pos.y))
 
 proc position*(window: OsWindow): (int, int) =
-  var pos: win32.POINT
-  win32.ClientToScreen(window.m_hwnd, addr(pos))
+  var pos: POINT
+  ClientToScreen(window.m_hwnd, addr(pos))
   return (int(pos.x), int(pos.y))
 
 proc setPosition*(window: OsWindow, x, y: int) =
-  win32.SetWindowPos(
-    window.m_hwnd, 0,
+  SetWindowPos(
+    window.m_hwnd, nil,
     int32(x), int32(y),
     0, 0,
-    win32.SWP_NOACTIVATE or win32.SWP_NOZORDER or win32.SWP_NOSIZE,
+    SWP_NOACTIVATE or SWP_NOZORDER or SWP_NOSIZE,
   )
 
 proc size*(window: OsWindow): (int, int) =
-  var area: win32.RECT
-  win32.GetClientRect(window.m_hwnd, addr(area))
+  var area: RECT
+  GetClientRect(window.m_hwnd, addr(area))
   return (int(area.right), int(area.bottom))
 
 proc setSize*(window: OsWindow, width, height: int) =
-  win32.SetWindowPos(
-    window.m_hwnd, 0,
+  SetWindowPos(
+    window.m_hwnd, nil,
     0, 0,
     int32(width), int32(height),
-    win32.SWP_NOACTIVATE or win32.SWP_NOOWNERZORDER or win32.SWP_NOMOVE or win32.SWP_NOZORDER,
+    SWP_NOACTIVATE or SWP_NOOWNERZORDER or SWP_NOMOVE or SWP_NOZORDER,
   )
 
 proc dpi*(window: OsWindow): float =
@@ -192,29 +193,29 @@ proc setDecorated*(window: OsWindow, decorated: bool) =
 
 proc embedInsideWindow*(window: OsWindow, parent: pointer) =
   if window.childStatus != Embedded:
-    win32.SetWindowLongPtr(
+    SetWindowLongPtrA(
       window.m_hwnd,
-      win32.GWL_STYLE,
-      int(win32.WS_CHILDWINDOW or win32.WS_CLIPSIBLINGS),
+      GWL_STYLE,
+      WS_CHILDWINDOW or WS_CLIPSIBLINGS,
     )
     window.childStatus = Embedded
     window.setDecorated(false)
     var (x, y) = window.position()
     var (width, height) = window.size()
-    win32.SetWindowPos(
+    SetWindowPos(
       window.m_hwnd,
-      win32.HWND_TOPMOST,
+      HWND_TOPMOST,
       int32(x), int32(y),
       int32(width), int32(height),
-      win32.SWP_SHOWWINDOW,
+      SWP_SHOWWINDOW,
     )
-  win32.SetParent(window.m_hwnd, cast[win32.HWND](parent))
+  SetParent(window.m_hwnd, cast[HWND](parent))
 
 proc show*(window: OsWindow) =
-  win32.ShowWindow(window.m_hwnd, win32.SW_SHOW)
+  ShowWindow(window.m_hwnd, SW_SHOW)
 
 proc hide*(window: OsWindow) =
-  win32.ShowWindow(window.m_hwnd, win32.SW_HIDE)
+  ShowWindow(window.m_hwnd, SW_HIDE)
 
 proc initOpenGlContext(window: OsWindow) =
   var pfd = PIXELFORMATDESCRIPTOR(
@@ -242,71 +243,70 @@ proc initOpenGlContext(window: OsWindow) =
     dwDamageMask: 0,
   )
 
-  window.m_hdc = win32.GetDC(window.m_hwnd)
-  win32.SetPixelFormat(
+  window.m_hdc = GetDC(window.m_hwnd)
+  SetPixelFormat(
     window.m_hdc,
-    win32.ChoosePixelFormat(window.m_hdc, addr(pfd)),
+    ChoosePixelFormat(window.m_hdc, addr(pfd)),
     addr(pfd),
   )
 
-  window.m_hglrc = win32.wglCreateContext(window.m_hdc)
-  win32.wglMakeCurrent(window.m_hdc, window.m_hglrc)
+  window.m_hglrc = wglCreateContext(window.m_hdc)
+  wglMakeCurrent(window.m_hdc, window.m_hglrc)
 
-  win32.ReleaseDC(window.m_hwnd, window.m_hdc)
+  ReleaseDC(window.m_hwnd, window.m_hdc)
 
-proc windowProc(hwnd: win32.HWND, msg: win32.UINT, wparam: win32.WPARAM, lparam: win32.LPARAM): win32.LRESULT {.stdcall.} =
-  if msg == win32.WM_CREATE:
-    var lpcs = cast[win32.LPCREATESTRUCT](lparam)
-    win32.SetWindowLongPtr(hwnd, win32.GWLP_USERDATA, cast[win32.LONG_PTR](lpcs.lpCreateParams))
+proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT {.stdcall.} =
+  if msg == WM_CREATE:
+    var lpcs = cast[LPCREATESTRUCTA](lparam)
+    SetWindowLongPtrA(hwnd, GWLP_USERDATA, cast[LONG_PTR](lpcs.lpCreateParams))
 
-  var window = cast[OsWindow](win32.GetWindowLongPtr(hwnd, win32.GWLP_USERDATA))
+  var window = cast[OsWindow](GetWindowLongPtrA(hwnd, GWLP_USERDATA))
   if window == nil or hwnd != window.m_hwnd:
-    return win32.DefWindowProc(hwnd, msg, wparam, lparam)
+    return DefWindowProcA(hwnd, msg, wparam, lparam)
 
   case msg:
 
-  of win32.WM_MOVE:
+  of WM_MOVE:
     if window.onMove != nil:
       window.onMove(
         window,
-        int(win32.GET_X_LPARAM(lparam)),
-        int(win32.GET_Y_LPARAM(lparam)),
+        int(GET_X_LPARAM(lparam)),
+        int(GET_Y_LPARAM(lparam)),
       )
 
-  of win32.WM_SIZE:
+  of WM_SIZE:
     if window.onResize != nil:
       window.onResize(
         window,
-        int(win32.LOWORD(cast[win32.DWORD](lparam))),
-        int(win32.HIWORD(cast[win32.DWORD](lparam))),
+        int(LOWORD(cast[DWORD](lparam))),
+        int(HIWORD(cast[DWORD](lparam))),
       )
 
-  of win32.WM_CLOSE:
-    if window.onClose != nil:
-      window.onClose(window)
+  of WM_CLOSE:
     window.close()
 
-  of win32.WM_DESTROY:
+  of WM_DESTROY:
+    if window.onClose != nil:
+      window.onClose(window)
     if windowCount > 0:
       windowCount -= 1
       if windowCount == 0:
-        win32.UnregisterClass(windowClassName, 0)
-    dealloc(window)
+        UnregisterClassA(windowClassName, nil)
 
   of WM_DPICHANGED:
     if window.onDpiChange != nil:
       window.onDpiChange(window, float(GetDpiForWindow(window.m_hwnd)))
 
-  of win32.WM_MOUSEMOVE:
-    window.m_cursorX = int(win32.GET_X_LPARAM(lparam))
-    window.m_cursorY = int(win32.GET_Y_LPARAM(lparam))
+  of WM_MOUSEMOVE:
+    window.m_cursorX = int(GET_X_LPARAM(lparam))
+    window.m_cursorY = int(GET_Y_LPARAM(lparam))
 
     if not window.isHovered:
-      var tme: win32.TTRACKMOUSEEVENT
-      tme.cbSize = win32.DWORD(sizeof(tme))
-      tme.dwFlags = win32.TME_LEAVE
+      var tme: TTRACKMOUSEEVENT
+      tme.cbSize = DWORD(sizeof(tme))
+      tme.dwFlags = TME_LEAVE
       tme.hwndTrack = window.m_hwnd
-      win32.TrackMouseEvent(addr(tme))
+      TrackMouseEvent(addr(tme))
       window.isHovered = true
       if window.onMouseEnter != nil:
         window.onMouseEnter(window, window.m_cursorX, window.m_cursorY)
@@ -314,78 +314,78 @@ proc windowProc(hwnd: win32.HWND, msg: win32.UINT, wparam: win32.WPARAM, lparam:
     if window.onMouseMove != nil:
       window.onMouseMove(window, window.m_cursorX, window.m_cursorY)
 
-  of win32.WM_MOUSELEAVE:
+  of WM_MOUSELEAVE:
       window.isHovered = false
       if window.onMouseExit != nil:
         window.onMouseExit(window, window.m_cursorX, window.m_cursorY)
 
-  of win32.WM_MOUSEWHEEL:
+  of WM_MOUSEWHEEL:
     if window.onMouseWheel != nil:
       window.onMouseWheel(
         window,
         0,
-        float(win32.GET_WHEEL_DELTA_WPARAM(wparam)) / win32.WHEEL_DELTA,
+        float(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA,
       )
 
-  of win32.WM_MOUSEHWHEEL:
+  of WM_MOUSEHWHEEL:
     if window.onMouseWheel != nil:
       window.onMouseWheel(
         window,
-        float(win32.GET_WHEEL_DELTA_WPARAM(wparam)) / win32.WHEEL_DELTA,
+        float(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA,
         0,
       )
 
-  of win32.WM_LBUTTONDOWN, win32.WM_LBUTTONDBLCLK,
-     win32.WM_MBUTTONDOWN, win32.WM_MBUTTONDBLCLK,
-     win32.WM_RBUTTONDOWN, win32.WM_RBUTTONDBLCLK,
-     win32.WM_XBUTTONDOWN, win32.WM_XBUTTONDBLCLK:
-    window.m_cursorX = int(win32.GET_X_LPARAM(lparam))
-    window.m_cursorY = int(win32.GET_Y_LPARAM(lparam))
-    win32.SetCapture(window.m_hwnd)
+  of WM_LBUTTONDOWN, WM_LBUTTONDBLCLK,
+     WM_MBUTTONDOWN, WM_MBUTTONDBLCLK,
+     WM_RBUTTONDOWN, WM_RBUTTONDBLCLK,
+     WM_XBUTTONDOWN, WM_XBUTTONDBLCLK:
+    window.m_cursorX = int(GET_X_LPARAM(lparam))
+    window.m_cursorY = int(GET_Y_LPARAM(lparam))
+    SetCapture(window.m_hwnd)
     if window.onMousePress != nil:
       window.onMousePress(window, toMouseButton(msg, wparam), window.m_cursorX, window.m_cursorY)
 
-  of win32.WM_LBUTTONUP, win32.WM_MBUTTONUP, win32.WM_RBUTTONUP, win32.WM_XBUTTONUP:
-    window.m_cursorX = int(win32.GET_X_LPARAM(lparam))
-    window.m_cursorY = int(win32.GET_Y_LPARAM(lparam))
-    win32.ReleaseCapture()
+  of WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP, WM_XBUTTONUP:
+    window.m_cursorX = int(GET_X_LPARAM(lparam))
+    window.m_cursorY = int(GET_Y_LPARAM(lparam))
+    ReleaseCapture()
     if window.onMouseRelease != nil:
       window.onMouseRelease(window, toMouseButton(msg, wparam), window.m_cursorX, window.m_cursorY)
 
-  of win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN:
+  of WM_KEYDOWN, WM_SYSKEYDOWN:
     if window.on_key_press != nil:
       window.on_key_press(window, toKeyboardKey(wparam, lparam))
 
-  of win32.WM_KEYUP, win32.WM_SYSKEYUP:
+  of WM_KEYUP, WM_SYSKEYUP:
     if window.onKeyRelease != nil:
       window.onKeyRelease(window, toKeyboardKey(wparam, lparam))
 
-  of win32.WM_CHAR, win32.WM_SYSCHAR:
+  of WM_CHAR, WM_SYSCHAR:
     if wparam > 0 and wparam < 0x10000:
       if window.onRune != nil:
           window.onRune(window, cast[unicode.Rune](wparam))
 
-  of win32.WM_NCCALCSIZE:
+  of WM_NCCALCSIZE:
     if not window.isDecorated:
       return 0
 
   else:
     discard
 
-  return win32.DefWindowProc(hwnd, msg, wparam, lparam)
+  return DefWindowProcA(hwnd, msg, wparam, lparam)
 
-proc toWin32CursorStyle(style: CursorStyle): win32.LPTSTR =
+proc toWin32CursorStyle(style: CursorStyle): LPSTR =
   return case style:
-    of Arrow: win32.IDC_ARROW
-    of IBeam: win32.IDC_IBEAM
-    of Crosshair: win32.IDC_CROSS
-    of PointingHand: win32.IDC_HAND
-    of ResizeLeftRight: win32.IDC_SIZEWE
-    of ResizeTopBottom: win32.IDC_SIZENS
-    of ResizeTopLeftBottomRight: win32.IDC_SIZENWSE
-    of ResizeTopRightBottomLeft: win32.IDC_SIZENESW
+    of Arrow: IDC_ARROW
+    of IBeam: IDC_IBEAM
+    of Crosshair: IDC_CROSS
+    of PointingHand: IDC_HAND
+    of ResizeLeftRight: IDC_SIZEWE
+    of ResizeTopBottom: IDC_SIZENS
+    of ResizeTopLeftBottomRight: IDC_SIZENWSE
+    of ResizeTopRightBottomLeft: IDC_SIZENESW
 
-func toMouseButton(msg: win32.UINT, wParam: win32.WPARAM): MouseButton =
+func toMouseButton(msg: UINT, wParam: WPARAM): MouseButton =
   return case msg:
   of WM_LBUTTONDOWN, WM_LBUTTONUP, WM_LBUTTONDBLCLK:
     MouseButton.Left
@@ -401,9 +401,9 @@ func toMouseButton(msg: win32.UINT, wParam: win32.WPARAM): MouseButton =
   else:
     MouseButton.Unknown
 
-func toKeyboardKey(wParam: win32.WPARAM, lParam: win32.LPARAM): KeyboardKey =
-  let scanCode = win32.LOBYTE(win32.HIWORD(lParam))
-  let isRight = (win32.HIWORD(lParam) and win32.KF_EXTENDED) == win32.KF_EXTENDED
+func toKeyboardKey(wParam: WPARAM, lParam: LPARAM): KeyboardKey =
+  let scanCode = LOBYTE(HIWORD(lParam))
+  let isRight = (HIWORD(lParam) and KF_EXTENDED) == KF_EXTENDED
   return case scanCode:
     of 42: KeyboardKey.LeftShift
     of 54: KeyboardKey.RightShift

@@ -2,7 +2,7 @@ import std/strformat
 import oswindow
 import opengl as gl
 
-var window = openOsWindow()
+var window = OsWindow.new()
 window.show()
 
 gl.loadExtensions()
