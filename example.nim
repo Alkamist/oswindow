@@ -5,7 +5,8 @@ import opengl
 var window = OsWindow.new()
 window.show()
 
-opengl.loadExtensions()
+when not defined(emscripten):
+  opengl.loadExtensions()
 
 proc onFrame(window: OsWindow) =
   let (width, height) = window.size
@@ -48,12 +49,10 @@ window.onKeyPress = proc(window: OsWindow, key: KeyboardKey) =
 window.onKeyRelease = proc(window: OsWindow, key: KeyboardKey) =
   echo &"Key released: {key}"
 
-window.onRune = proc(window: OsWindow, r: unicode.Rune) =
+window.onRune = proc(window: OsWindow, r: Rune) =
   echo &"Rune typed: {r}"
 
 window.onDpiChange = proc(window: OsWindow, dpi: float) =
   echo &"Dpi changed: {dpi}"
 
-while window.isOpen:
-  window.pollEvents()
-  onFrame(window)
+window.run(onFrame)

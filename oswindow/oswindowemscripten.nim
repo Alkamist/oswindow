@@ -1,149 +1,186 @@
 {.experimental: "overloadableEnums".}
+{.experimental: "codeReordering".}
 
-# import opengl
-# import ./emscriptenapi
-# import ./oswindowbase; export oswindowbase
+import ./common; export common
+import ./emscriptenapi
 
-# const canvas = "canvas.emscripten"
+const canvas = "canvas.emscripten"
 
-# {.passL: "-s EXPORTED_RUNTIME_METHODS=ccall".}
-# {.passL: "-s EXPORTED_FUNCTIONS=_main,_mousePressProc,_mouseReleaseProc,_mouseMoveProc".}
+{.passL: "-s EXPORTED_RUNTIME_METHODS=ccall".}
+{.passL: "-s EXPORTED_FUNCTIONS=_main,_onMousePress,_onMouseRelease,_onMouseMove".}
 
-# {.emit: """
-# #include <emscripten/em_js.h>
-# EM_JS(int, getWindowWidth, (), {
-#   return window.innerWidth;
-# });
-# EM_JS(int, getWindowHeight, (), {
-#   return window.innerHeight;
-# });
-# EM_JS(void, setMouseCursorImage, (const char* cursorName), {
-#   document.body.style.cursor = UTF8ToString(cursorName);
-# });
-# """.}
+emscripten_run_script("""
+function dispatchMousePress(e) {
+  Module.ccall("onMousePress", null, ["number", "number", "number"], [e.button, e.clientX, e.clientY]);
+}
+function dispatchMouseRelease(e) {
+  Module.ccall("onMouseRelease", null, ["number", "number", "number"], [e.button, e.clientX, e.clientY]);
+}
+function dispatchMouseMove(e) {
+  Module.ccall("onMouseMove", null, ["number", "number"], [e.clientX, e.clientY]);
+}
+window.addEventListener("mousedown", dispatchMousePress);
+window.addEventListener("mouseup", dispatchMouseRelease);
+window.addEventListener("mousemove", dispatchMouseMove);
+""")
 
-# proc getWindowWidth(): cint {.importc, nodecl.}
-# proc getWindowHeight(): cint {.importc, nodecl.}
-# proc setMouseCursorImage(cursorName: cstring) {.importc, nodecl.}
+{.emit: """
+#include <emscripten/em_js.h>
+EM_JS(int, getWindowWidth, (), {
+  return window.innerWidth;
+});
+EM_JS(int, getWindowHeight, (), {
+  return window.innerHeight;
+});
+EM_JS(double, getDpi, (), {
+  return window.devicePixelRatio * 96.0;
+});
+EM_JS(void, setCursorImage, (const char* cursorName), {
+  document.body.style.cursor = UTF8ToString(cursorName);
+});
+""".}
 
-# type
-#   OsWindow* = ref object
-#     state*: OsWindowState
-#     onFrame*: proc()
-#     handle*: pointer
-#     webGlContext*: EMSCRIPTEN_WEBGL_CONTEXT_HANDLE
+proc getWindowWidth(): cint {.importc, nodecl.}
+proc getWindowHeight(): cint {.importc, nodecl.}
+proc getDpi(): cdouble {.importc, nodecl.}
+proc setCursorImage(cursorName: cstring) {.importc, nodecl.}
 
-# var mainWindow: OsWindow
+type
+  OsWindow* = ref OsWindowObj
+  OsWindowObj* = object
+    userData*: pointer
+    onClose*: proc(window: OsWindow)
+    onMove*: proc(window: OsWindow, x, y: int)
+    onResize*: proc(window: OsWindow, width, height: int)
+    onMouseMove*: proc(window: OsWindow, x, y: int)
+    onMousePress*: proc(window: OsWindow, button: MouseButton, x, y: int)
+    onMouseRelease*: proc(window: OsWindow, button: MouseButton, x, y: int)
+    onMouseEnter*: proc(window: OsWindow, x, y: int)
+    onMouseExit*: proc(window: OsWindow, x, y: int)
+    onMouseWheel*: proc(window: OsWindow, x, y: float)
+    onKeyPress*: proc(window: OsWindow, key: KeyboardKey)
+    onKeyRelease*: proc(window: OsWindow, key: KeyboardKey)
+    onRune*: proc(window: OsWindow, r: Rune)
+    onDpiChange*: proc(window: OsWindow, dpi: float)
+    isOpen*: bool
+    isDecorated*: bool
+    isHovered*: bool
+    childStatus*: ChildStatus
 
-# defineOsWindowBaseProcs(OsWindow)
+    m_onFrame*: proc(window: OsWindow)
+    m_webGlContext*: EMSCRIPTEN_WEBGL_CONTEXT_HANDLE
 
-# func toMouseButton(scanCode: int): MouseButton =
-#   case scanCode:
-#   of 0: MouseButton.Left
-#   of 1: MouseButton.Middle
-#   of 2: MouseButton.Right
-#   of 3: MouseButton.Extra1
-#   of 4: MouseButton.Extra2
-#   else: MouseButton.Unknown
+var mainWindow: OsWindow
 
-# func toJsMouseCursorStyle(style: MouseCursorStyle): cstring =
-#   case style:
-#   of Arrow: cstring"default"
-#   of IBeam: cstring"text"
-#   of Crosshair: cstring"crosshair"
-#   of PointingHand: cstring"pointer"
-#   of ResizeLeftRight: cstring"ew-resize"
-#   of ResizeTopBottom: cstring"ns-resize"
-#   of ResizeTopLeftBottomRight: cstring"nwse-resize"
-#   of ResizeTopRightBottomLeft: cstring"nesw-resize"
+proc new*(_: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
+  mainWindow = OsWindow()
+  GcRef(mainWindow)
 
-# proc createWebGlContext(window: OsWindow) =
-#   var attributes: EmscriptenWebGLContextAttributes
-#   emscripten_webgl_init_context_attributes(attributes.addr)
-#   attributes.stencil = true.EM_BOOL
-#   attributes.depth = true.EM_BOOL
-#   window.webGlContext = emscripten_webgl_create_context(canvas, attributes.addr)
+  let (width, height) = mainWindow.size
+  discard emscripten_set_canvas_element_size(canvas, cint(width), cint(height))
 
-# proc makeContextCurrent(window: OsWindow) =
-#   discard emscripten_webgl_make_context_current(window.webGlContext)
+  mainWindow.createWebGlContext()
+  mainWindow.makeContextCurrent()
 
-# proc updateBounds(window: OsWindow) =
-#   let width = getWindowWidth()
-#   let height = getWindowHeight()
-#   discard emscripten_set_canvas_element_size(canvas, width, height)
-#   window.state.widthPixels = width
-#   window.state.heightPixels = height
+  discard emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, cast[pointer](mainWindow), EM_BOOL(false), onResize)
 
-# proc mainLoop(time: cdouble, userData: pointer): EM_BOOL {.cdecl.} =
-#   let window = cast[OsWindow](userData)
-#   window.makeContextCurrent()
-#   glClear(GL_COLOR_BUFFER_BIT)
+  return mainWindow
 
-#   if window.onFrame != nil:
-#     window.onFrame()
+proc run*(window: OsWindow, onFrame: proc(window: OsWindow)) =
+  window.m_onFrame = onFrame
+  emscripten_request_animation_frame_loop(mainLoop, cast[pointer](window))
 
-#   window.updateState(emscripten_performance_now() * 0.001)
-#   emscripten_request_animation_frame(mainLoop, cast[pointer](window))
+proc close*(window: OsWindow) =
+  discard
 
-# proc onResize(eventType: cint, uiEvent: ptr EmscriptenUiEvent, userData: pointer): EM_BOOL {.cdecl.} =
-#   let window = cast[OsWindow](userData)
-#   discard emscripten_set_canvas_element_size(canvas, uiEvent.windowInnerWidth, uiEvent.windowInnerHeight)
-#   window.state.widthPixels = uiEvent.windowInnerWidth
-#   window.state.heightPixels = uiEvent.windowInnerHeight
+proc pollEvents*(window: OsWindow) =
+  discard
 
-# proc mousePressProc(button: int) {.exportc.} =
-#   let button = button.toMouseButton()
-#   mainWindow.state.mousePresses.add button
-#   mainWindow.state.mouseDownStates[button] = true
+proc swapBuffers*(window: OsWindow) =
+  discard
 
-# proc mouseReleaseProc(button: int) {.exportc.} =
-#   let button = button.toMouseButton()
-#   mainWindow.state.mouseReleases.add button
-#   mainWindow.state.mouseDownStates[button] = false
+proc makeContextCurrent*(window: OsWindow) =
+  discard emscripten_webgl_make_context_current(window.m_webGlContext)
 
-# proc mouseMoveProc(clientX, clientY: cint) {.exportc.} =
-#   mainWindow.state.mouseXPixels = clientX
-#   mainWindow.state.mouseYPixels = clientY
+proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
+  setCursorImage(style.toJsCursorStyle)
 
-# emscripten_run_script("""
-# function onMousePress(e) {
-#   Module.ccall('mousePressProc', null, ['number'], [e.button]);
-# }
-# function onMouseRelease(e) {
-#   Module.ccall('mouseReleaseProc', null, ['number'], [e.button]);
-# }
-# function onMouseMove(e) {
-#   Module.ccall('mouseMoveProc', null, ['number', 'number'], [e.clientX, e.clientY]);
-# }
-# window.addEventListener("mousedown", onMousePress);
-# window.addEventListener("mouseup", onMouseRelease);
-# window.addEventListener("mousemove", onMouseMove);
-# """)
+proc cursorPosition*(window: OsWindow): (int, int) =
+  var event: EmscriptenMouseEvent
+  discard emscripten_get_mouse_status(addr(event))
+  (int(event.clientX), int(event.clientY))
 
-# proc setBackgroundColor*(window: OsWindow, r, g, b, a: float) =
-#   window.makeContextCurrent()
-#   glClearColor(r, g, b, a)
+proc position*(window: OsWindow): (int, int) =
+  (0, 0)
 
-# proc setMouseCursorStyle*(window: OsWindow, style: MouseCursorStyle) =
-#   setMouseCursorImage(style.toJsMouseCursorStyle)
+proc setPosition*(window: OsWindow, x, y: int) =
+  discard
 
-# proc setPosition*(window: OsWindow, x, y: int) = discard
-# proc setSize*(window: OsWindow, width, height: int) = discard
-# proc embedInsideWindow*(window: OsWindow, parent: pointer) = discard
-# proc show*(window: OsWindow) = discard
-# proc hide*(window: OsWindow) = discard
-# proc close*(window: OsWindow) = discard
-# proc process*(window: OsWindow) = discard
+proc size*(window: OsWindow): (int, int) =
+  (int(getWindowWidth()), int(getWindowHeight()))
 
-# proc newOsWindow*(parentHandle: pointer = nil): OsWindow =
-#   mainWindow = OsWindow()
-#   mainWindow.initState(emscripten_performance_now() * 0.001)
-#   mainWindow.createWebGlContext()
-#   mainWindow.makeContextCurrent()
+proc setSize*(window: OsWindow, width, height: int) =
+  discard
 
-#   mainWindow.updateBounds()
+proc dpi*(window: OsWindow): float =
+  return float(getDpi())
 
-#   discard emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, cast[pointer](mainWindow), false.EM_BOOL, onResize)
-#   discard emscripten_request_animation_frame(mainLoop, cast[pointer](mainWindow))
+proc embedInsideWindow*(window: OsWindow, parent: pointer) =
+  discard
 
-#   return mainWindow
+proc show*(window: OsWindow) =
+  discard
+
+proc hide*(window: OsWindow) =
+  discard
+
+proc createWebGlContext(window: OsWindow) =
+  var attributes: EmscriptenWebGLContextAttributes
+  emscripten_webgl_init_context_attributes(addr(attributes))
+  attributes.stencil = true.EM_BOOL
+  attributes.depth = true.EM_BOOL
+  window.m_webGlContext = emscripten_webgl_create_context(canvas, addr(attributes))
+
+func toMouseButton(jsCode: cint): MouseButton =
+  case jsCode:
+  of 0: MouseButton.Left
+  of 1: MouseButton.Middle
+  of 2: MouseButton.Right
+  of 3: MouseButton.Extra1
+  of 4: MouseButton.Extra2
+  else: MouseButton.Unknown
+
+func toJsCursorStyle(style: CursorStyle): cstring =
+  case style:
+  of Arrow: cstring"default"
+  of IBeam: cstring"text"
+  of Crosshair: cstring"crosshair"
+  of PointingHand: cstring"pointer"
+  of ResizeLeftRight: cstring"ew-resize"
+  of ResizeTopBottom: cstring"ns-resize"
+  of ResizeTopLeftBottomRight: cstring"nwse-resize"
+  of ResizeTopRightBottomLeft: cstring"nesw-resize"
+
+proc mainLoop(time: cdouble, userData: pointer): EM_BOOL {.cdecl.} =
+  let window = cast[OsWindow](userData)
+  if window.m_onFrame != nil:
+    window.m_onFrame(window)
+  return EM_TRUE
+
+proc onResize(eventType: cint, uiEvent: ptr EmscriptenUiEvent, userData: pointer): EM_BOOL {.cdecl.} =
+  let window = cast[OsWindow](userData)
+  discard emscripten_set_canvas_element_size(canvas, uiEvent.windowInnerWidth, uiEvent.windowInnerHeight)
+  if window.onResize != nil:
+    window.onResize(window, uiEvent.windowInnerWidth, uiEvent.windowInnerHeight)
+
+proc onMousePress(button: cint, x, y: cdouble) {.exportc.} =
+  if mainWindow.onMousePress != nil:
+    mainWindow.onMousePress(mainWindow, button.toMouseButton, int(x), int(y))
+
+proc onMouseRelease(button: cint, x, y: cdouble) {.exportc.} =
+  if mainWindow.onMouseRelease != nil:
+    mainWindow.onMouseRelease(mainWindow, button.toMouseButton, int(x), int(y))
+
+proc onMouseMove(x, y: cdouble) {.exportc.} =
+  if mainWindow.onMouseMove != nil:
+    mainWindow.onMouseMove(mainWindow, int(x), int(y))
