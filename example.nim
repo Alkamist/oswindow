@@ -1,13 +1,15 @@
 import std/strformat
 import oswindow
-import opengl as gl
+import opengl
 
 var window = OsWindow.new()
 window.show()
 
-gl.loadExtensions()
+opengl.loadExtensions()
 
 proc onFrame(window: OsWindow) =
+  let (width, height) = window.size
+  glViewport(0, 0, int32(width), int32(height))
   glClearColor(0.1, 0.1, 0.1, 1.0)
   glClear(GL_COLOR_BUFFER_BIT)
   window.swapBuffers()
@@ -20,7 +22,6 @@ window.onMove = proc(window: OsWindow, x, y: int) =
 
 window.onResize = proc(window: OsWindow, width, height: int) =
   echo &"Window resized: {width}, {height}"
-  glViewport(0, 0, int32(width), int32(height))
   onFrame(window)
 
 window.onMouseMove = proc(window: OsWindow, x, y: int) =

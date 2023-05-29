@@ -84,7 +84,7 @@ proc `=destroy`*(window: var OsWindowObj) =
     window.isOpen = false
     DestroyWindow(window.m_hwnd)
 
-proc new*(T: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
+proc new*(_: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
   result = OsWindow()
 
   var hinstance = GetModuleHandleA(nil)
@@ -95,7 +95,8 @@ proc new*(T: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
       style: CS_OWNDC,
       lpfnWndProc: windowProc,
       hInstance: hinstance,
-      hCursor: LoadCursorA(nil, IDC_ARROW),
+      # hCursor: LoadCursorA(nil, IDC_ARROW),
+      hCursor: nil,
       lpszClassName: windowClassName,
     )
     RegisterClassExA(addr(windowClass))
