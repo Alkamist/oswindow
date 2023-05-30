@@ -2,7 +2,7 @@ import std/strformat
 import oswindow
 
 var window = OsWindow.new()
-window.setBackgroundColor((r: 0.2, g: 0.0, b: 0.0))
+window.setBackgroundColor(0.2, 0, 0)
 window.show()
 
 window.onFrame = proc(window: OsWindow) =
@@ -41,10 +41,10 @@ window.onKeyPress = proc(window: OsWindow, key: KeyboardKey) =
 window.onKeyRelease = proc(window: OsWindow, key: KeyboardKey) =
   echo &"Key released: {key}"
 
-window.onRune = proc(window: OsWindow, r: Rune) =
-  echo &"Rune typed: {r}"
+window.onTextInput = proc(window: OsWindow, text: string) =
+  echo &"Text typed: {text}"
 
-window.onScaleChange = proc(window: OsWindow, scale: float) =
-  echo &"Scale changed: {scale}"
+# window.onScaleChange = proc(window: OsWindow, scale: float) =
+#   echo &"Scale changed: {scale}"
 
 window.run()

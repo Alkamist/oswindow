@@ -1,7 +1,5 @@
 {.experimental: "overloadableEnums".}
 
-import std/unicode; export unicode
-
 const densityPixelDpi* = 96.0
 
 type

@@ -1,6 +1,7 @@
 {.experimental: "overloadableEnums".}
 {.experimental: "codeReordering".}
 
+import std/unicode
 import opengl
 import ./common; export common
 import ./win32api
@@ -21,7 +22,7 @@ type
     onMouseWheel*: proc(window: OsWindow, x, y: float)
     onKeyPress*: proc(window: OsWindow, key: KeyboardKey)
     onKeyRelease*: proc(window: OsWindow, key: KeyboardKey)
-    onRune*: proc(window: OsWindow, r: Rune)
+    onTextInput*: proc(window: OsWindow, text: string)
     onScaleChange*: proc(window: OsWindow, scale: float)
     isOpen*: bool
     isDecorated*: bool
@@ -94,14 +95,15 @@ proc new*(_: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
   windowCount += 1
 
 proc processFrame*(window: OsWindow) =
-  window.makeContextCurrent()
-  let (width, height) = window.size
-  glViewport(0, 0, int32(width), int32(height))
-  let (r, g, b) = window.m_backgroundColor
-  glClearColor(float(r) / 255, float(g) / 255, float(b) / 255, 1.0)
-  glClear(GL_COLOR_BUFFER_BIT)
-  if window.onFrame != nil:
-    window.onFrame(window)
+  if window.isOpen:
+    window.makeContextCurrent()
+    let (width, height) = window.size
+    glViewport(0, 0, int32(width), int32(height))
+    let (r, g, b) = window.m_backgroundColor
+    glClearColor(float(r) / 255, float(g) / 255, float(b) / 255, 1.0)
+    glClear(GL_COLOR_BUFFER_BIT)
+    if window.onFrame != nil:
+      window.onFrame(window)
 
 proc run*(window: OsWindow) =
   while window.isOpen:
@@ -126,8 +128,8 @@ proc swapBuffers*(window: OsWindow) =
 proc makeContextCurrent*(window: OsWindow) =
   wglMakeCurrent(window.m_hdc, window.m_hglrc)
 
-proc setBackgroundColor*(window: OsWindow, color: auto) =
-  window.m_backgroundColor = (uint8(color.r * 255), uint8(color.g * 255), uint8(color.b * 255))
+proc setBackgroundColor*(window: OsWindow, r, g, b: float) =
+  window.m_backgroundColor = (uint8(r * 255), uint8(g * 255), uint8(b * 255))
 
 proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
   SetCursor(LoadCursorA(nil, style.toWin32CursorStyle))
@@ -354,8 +356,8 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
 
   of WM_CHAR, WM_SYSCHAR:
     if wparam > 0 and wparam < 0x10000:
-      if window.onRune != nil:
-          window.onRune(window, cast[unicode.Rune](wparam))
+      if window.onTextInput != nil:
+        window.onTextInput(window, $cast[Rune](wparam))
 
   of WM_ERASEBKGND:
     let hdc = cast[HDC](wparam)
