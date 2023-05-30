@@ -1,6 +1,7 @@
 {.experimental: "overloadableEnums".}
 {.experimental: "codeReordering".}
 
+import opengl
 import ./common; export common
 import ./win32api
 
@@ -8,6 +9,7 @@ type
   OsWindow* = ref OsWindowObj
   OsWindowObj* = object
     userData*: pointer
+    onFrame*: proc(window: OsWindow)
     onClose*: proc(window: OsWindow)
     onMove*: proc(window: OsWindow, x, y: int)
     onResize*: proc(window: OsWindow, width, height: int)
@@ -19,18 +21,20 @@ type
     onMouseWheel*: proc(window: OsWindow, x, y: float)
     onKeyPress*: proc(window: OsWindow, key: KeyboardKey)
     onKeyRelease*: proc(window: OsWindow, key: KeyboardKey)
-    onRune*: proc(window: OsWindow, r: unicode.Rune)
-    onDpiChange*: proc(window: OsWindow, dpi: float)
+    onRune*: proc(window: OsWindow, r: Rune)
+    onScaleChange*: proc(window: OsWindow, scale: float)
     isOpen*: bool
     isDecorated*: bool
     isHovered*: bool
     childStatus*: ChildStatus
 
+    m_backgroundColor: tuple[r, g, b: uint8]
     m_cursorX: int
     m_cursorY: int
     m_hwnd: HWND
     m_hdc: HDC
     m_hglrc: HGLRC
+    m_moveTimerId: UINT_PTR
 
 var windowCount = 0
 const windowClassName = "DefaultWindowClass"
@@ -89,10 +93,20 @@ proc new*(_: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
 
   windowCount += 1
 
-proc run*(window: OsWindow, onFrame: proc(window: OsWindow)) =
+proc processFrame*(window: OsWindow) =
+  window.makeContextCurrent()
+  let (width, height) = window.size
+  glViewport(0, 0, int32(width), int32(height))
+  let (r, g, b) = window.m_backgroundColor
+  glClearColor(float(r) / 255, float(g) / 255, float(b) / 255, 1.0)
+  glClear(GL_COLOR_BUFFER_BIT)
+  if window.onFrame != nil:
+    window.onFrame(window)
+
+proc run*(window: OsWindow) =
   while window.isOpen:
     window.pollEvents()
-    onFrame(window)
+    window.processFrame()
 
 proc close*(window: OsWindow) =
   if window.isOpen:
@@ -111,6 +125,9 @@ proc swapBuffers*(window: OsWindow) =
 
 proc makeContextCurrent*(window: OsWindow) =
   wglMakeCurrent(window.m_hdc, window.m_hglrc)
+
+proc setBackgroundColor*(window: OsWindow, color: auto) =
+  window.m_backgroundColor = (uint8(color.r * 255), uint8(color.g * 255), uint8(color.b * 255))
 
 proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
   SetCursor(LoadCursorA(nil, style.toWin32CursorStyle))
@@ -147,8 +164,8 @@ proc setSize*(window: OsWindow, width, height: int) =
     SWP_NOACTIVATE or SWP_NOOWNERZORDER or SWP_NOMOVE or SWP_NOZORDER,
   )
 
-proc dpi*(window: OsWindow): float =
-  return float(GetDpiForWindow(window.m_hwnd))
+proc scale*(window: OsWindow): float =
+  return float(GetDpiForWindow(window.m_hwnd)) / densityPixelDpi
 
 proc setDecorated*(window: OsWindow, decorated: bool) =
   window.isDecorated = decorated
@@ -215,6 +232,8 @@ proc initOpenGlContext(window: OsWindow) =
   window.m_hglrc = wglCreateContext(window.m_hdc)
   wglMakeCurrent(window.m_hdc, window.m_hglrc)
 
+  opengl.loadExtensions()
+
   ReleaseDC(window.m_hwnd, window.m_hdc)
 
 proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT {.stdcall.} =
@@ -227,6 +246,16 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
     return DefWindowProcA(hwnd, msg, wparam, lparam)
 
   case msg:
+
+  of WM_ENTERSIZEMOVE:
+    window.m_moveTimerId = SetTimer(window.m_hwnd, 1, USER_TIMER_MINIMUM, nil)
+
+  of WM_EXITSIZEMOVE:
+    KillTimer(window.m_hwnd, window.m_moveTimerId)
+
+  of WM_TIMER:
+    if (wParam == window.m_moveTimerId):
+      window.processFrame()
 
   of WM_MOVE:
     if window.onMove != nil:
@@ -248,6 +277,7 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
     window.close()
 
   of WM_DESTROY:
+    window.makeContextCurrent()
     if window.onClose != nil:
       window.onClose(window)
     if windowCount > 0:
@@ -256,8 +286,8 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
         UnregisterClassA(windowClassName, nil)
 
   of WM_DPICHANGED:
-    if window.onDpiChange != nil:
-      window.onDpiChange(window, float(GetDpiForWindow(window.m_hwnd)))
+    if window.onScaleChange != nil:
+      window.onScaleChange(window, float(GetDpiForWindow(window.m_hwnd)) / densityPixelDpi)
 
   of WM_MOUSEMOVE:
     window.m_cursorX = int(GET_X_LPARAM(lparam))
@@ -326,6 +356,13 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
     if wparam > 0 and wparam < 0x10000:
       if window.onRune != nil:
           window.onRune(window, cast[unicode.Rune](wparam))
+
+  of WM_ERASEBKGND:
+    let hdc = cast[HDC](wparam)
+    var clientRect: RECT
+    GetClientRect(window.m_hwnd, addr(clientRect))
+    let (r, g, b) = window.m_backgroundColor
+    FillRect(hdc, addr(clientRect), CreateSolidBrush(RGB(r, g, b)))
 
   of WM_NCCALCSIZE:
     if not window.isDecorated:

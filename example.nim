@@ -1,19 +1,12 @@
 import std/strformat
 import oswindow
-import opengl
 
 var window = OsWindow.new()
+window.setBackgroundColor((r: 0.2, g: 0.0, b: 0.0))
 window.show()
 
-when not defined(emscripten):
-  opengl.loadExtensions()
-
-proc onFrame(window: OsWindow) =
-  let (width, height) = window.size
-  glViewport(0, 0, int32(width), int32(height))
-  glClearColor(0.1, 0.1, 0.1, 1.0)
-  glClear(GL_COLOR_BUFFER_BIT)
-  window.swapBuffers()
+window.onFrame = proc(window: OsWindow) =
+  discard
 
 window.onClose = proc(window: OsWindow) =
   echo "Window closed"
@@ -23,7 +16,6 @@ window.onMove = proc(window: OsWindow, x, y: int) =
 
 window.onResize = proc(window: OsWindow, width, height: int) =
   echo &"Window resized: {width}, {height}"
-  onFrame(window)
 
 window.onMouseMove = proc(window: OsWindow, x, y: int) =
   echo &"Mouse moved: {x}, {y}"
@@ -52,7 +44,7 @@ window.onKeyRelease = proc(window: OsWindow, key: KeyboardKey) =
 window.onRune = proc(window: OsWindow, r: Rune) =
   echo &"Rune typed: {r}"
 
-window.onDpiChange = proc(window: OsWindow, dpi: float) =
-  echo &"Dpi changed: {dpi}"
+window.onScaleChange = proc(window: OsWindow, scale: float) =
+  echo &"Scale changed: {scale}"
 
-window.run(onFrame)
+window.run()

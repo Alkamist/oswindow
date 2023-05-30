@@ -37,9 +37,12 @@ type
   WPARAM* = UINT_PTR
   LRESULT* = LONG_PTR
 
+  COLORREF* = DWORD
+
   ATOM* = WORD
 
   WNDPROC* = proc(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.}
+  TIMERPROC* = proc(unnamedParam1: HWND, unnamedParam2: UINT, unnamedParam3: UINT_PTR, unnamedParam4: DWORD) {.stdcall.}
 
   LPPOINT* = ptr POINT
   POINT* {.bycopy.} = object
@@ -84,6 +87,15 @@ type
     hwndTrack*: HWND
     dwHoverTime*: DWORD
 
+  LPPAINTSTRUCT* = ptr PAINTSTRUCT
+  PAINTSTRUCT* {.bycopy.} = object
+    hdc*: HDC
+    fErase*: BOOL
+    rcPaint*: RECT
+    fRestore*: BOOL
+    fIncUpdate*: BOOL
+    rgbReserved*: array[32, BYTE]
+
   WNDCLASSEXA* {.bycopy.} = object
     cbSize*: UINT
     style*: UINT
@@ -126,6 +138,7 @@ type
     dwVisibleMask*: DWORD
     dwDamageMask*: DWORD
 
+template RGB*(r, g, b: untyped): COLORREF = COLORREF(COLORREF(r and 0xff) or (COLORREF(g and 0xff) shl 8) or (COLORREF(b and 0xff) shl 16))
 template LOWORD*(l: untyped): WORD = WORD(l and 0xffff)
 template HIWORD*(l: untyped): WORD = WORD((l shr 16) and 0xffff)
 template LOBYTE*(w: untyped): BYTE = BYTE(w and 0xff)
@@ -150,7 +163,9 @@ const WM_CREATE* = 0x0001
 const WM_DESTROY* = 0x0002
 const WM_MOVE* = 0x0003
 const WM_SIZE* = 0x0005
+const WM_PAINT* = 0x000F
 const WM_CLOSE* = 0x0010
+const WM_ERASEBKGND* = 0x0014
 const WM_DPICHANGED* = 0x02E0
 const WM_MOUSEMOVE* = 0x0200
 const WM_LBUTTONDOWN* = 0x0201
@@ -175,6 +190,10 @@ const WM_SYSKEYDOWN* = 0x0104
 const WM_SYSKEYUP* = 0x0105
 const WM_SYSCHAR* = 0x0106
 const WM_NCCALCSIZE* = 0x0083
+const WM_ENTERSIZEMOVE* = 0x0231
+const WM_EXITSIZEMOVE* = 0x0232
+const WM_WINDOWPOSCHANGED* = 0x0047
+const WM_TIMER* = 0x0113
 const WHEEL_DELTA* = 120
 const XBUTTON1* = 0x0001
 const XBUTTON2* = 0x0002
@@ -211,6 +230,8 @@ const WS_OVERLAPPEDWINDOW* = WS_OVERLAPPED or WS_CAPTION or WS_SYSMENU or WS_THI
 
 const HWND_TOPMOST* = cast[HWND](-1)
 
+const USER_TIMER_MINIMUM* = 10
+
 const IDC_ARROW* = MAKEINTRESOURCEA(32512)
 const IDC_IBEAM* = MAKEINTRESOURCEA(32513)
 const IDC_WAIT* = MAKEINTRESOURCEA(32514)
@@ -244,8 +265,14 @@ proc SetParent*(hWndChild, hWndNewParent: HWND): HWND
 proc SetWindowPos*(hWnd, hWndInsertAfter: HWND, X, Y, cx, cy: cint, uFlags: UINT): BOOL
 proc SetCapture*(hWnd: HWND): HWND
 proc ReleaseCapture*(): BOOL
+proc SetTimer*(hWnd: HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTimerFunc: TIMERPROC): UINT_PTR
+proc KillTimer*(hWnd: HWND, uIDEvent: UINT_PTR): BOOL
 proc ShowWindow*(hWnd: HWND , nCmdShow: cint): BOOL
 proc TrackMouseEvent*(lpEventTrack: LPTRACKMOUSEEVENT): BOOL
+proc BeginPaint*(hWnd: HWND, lpPaint: LPPAINTSTRUCT): HDC
+proc EndPaint*(hWnd: HWND, lpPaint: ptr PAINTSTRUCT): BOOL
+proc FillRect*(hDC: HDC, lprc: ptr RECT, hbr: HBRUSH): cint
+proc InvalidateRect*(hWnd: HWND, lpRect: ptr RECT, bErase: BOOL): BOOL
 proc SetWindowLongPtrA*(hWnd: HWND, nIndex: cint, dwNewLong: LONG_PTR): LONG_PTR
 proc GetWindowLongPtrA*(hWnd: HWND, nIndex: cint): LONG_PTR
 proc DefWindowProcA*(hWnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT
@@ -266,6 +293,8 @@ proc GetModuleHandleA*(lpModuleName: LPCSTR): HMODULE
 proc SetPixelFormat*(hdc: HDC, format: cint, ppfd: ptr PIXELFORMATDESCRIPTOR): BOOL
 proc ChoosePixelFormat*(hdc: HDC, ppfd: ptr PIXELFORMATDESCRIPTOR): cint
 proc SwapBuffers*(unnamedParam1: HDC): BOOL
+proc CreateSolidBrush*(color: COLORREF): HBRUSH
+proc SetBkColor*(hdc: HDC, color: COLORREF): COLORREF
 {.pop.}
 
 {.push discardable, stdcall, dynlib: "opengl32", importc.}
