@@ -208,6 +208,7 @@ proc onMouseWheel(x, y: cdouble) {.exportc.} =
     mainWindow.onMouseWheel(mainWindow, x * 0.01, y * -0.01)
 
 proc onMouseMove(x, y: cdouble) {.exportc.} =
+  mainWindow.isHovered = true
   if mainWindow.onMouseMove != nil:
     mainWindow.onMouseMove(mainWindow, int(x), int(y))
 
