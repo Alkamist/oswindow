@@ -81,8 +81,6 @@ var mainWindow: OsWindow
 
 proc new*(_: typedesc[OsWindow], parentHandle: pointer = nil): OsWindow =
   mainWindow = OsWindow()
-  GcRef(mainWindow)
-
   mainWindow.isOpen = true
 
   let (width, height) = mainWindow.size
@@ -111,8 +109,11 @@ proc processFrame*(window: OsWindow) =
     if window.onFrame != nil:
       window.onFrame(window)
 
+proc mainLoop() {.cdecl.} =
+  mainWindow.processFrame()
+
 proc run*(window: OsWindow) =
-  emscripten_request_animation_frame_loop(mainLoop, cast[pointer](window))
+  emscripten_set_main_loop(mainLoop, 0, EM_TRUE)
 
 proc close*(window: OsWindow) =
   discard
@@ -170,11 +171,6 @@ proc createWebGlContext(window: OsWindow) =
   attributes.stencil = true.EM_BOOL
   attributes.depth = true.EM_BOOL
   window.m_webGlContext = emscripten_webgl_create_context(canvas, addr(attributes))
-
-proc mainLoop(time: cdouble, userData: pointer): EM_BOOL {.cdecl.} =
-  let window = cast[OsWindow](userData)
-  window.processFrame()
-  return EM_TRUE
 
 proc onClose(eventType: cint, reserved, userData: pointer): cstring {.cdecl.} =
   let window = cast[OsWindow](userData)

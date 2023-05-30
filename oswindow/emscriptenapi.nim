@@ -22,9 +22,9 @@ type
   emscripten_align2_double* = cdouble
   emscripten_align1_double* = cdouble
 
-  em_callback_func* = proc()
-  em_arg_callback_func* = proc(a1: pointer)
-  em_str_callback_func* = proc(a1: cstring)
+  em_callback_func* = proc() {.cdecl.}
+  em_arg_callback_func* = proc(a1: pointer) {.cdecl.}
+  em_str_callback_func* = proc(a1: cstring) {.cdecl.}
 
 # ----------------------------- emscripten.h -----------------------------
 
