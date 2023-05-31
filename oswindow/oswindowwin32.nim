@@ -23,7 +23,7 @@ type
     onKeyPress*: proc(window: OsWindow, key: KeyboardKey)
     onKeyRelease*: proc(window: OsWindow, key: KeyboardKey)
     onTextInput*: proc(window: OsWindow, text: string)
-    onScaleChange*: proc(window: OsWindow, scale: float)
+    onDpiChange*: proc(window: OsWindow, dpi: float)
     isOpen*: bool
     isDecorated*: bool
     isHovered*: bool
@@ -166,8 +166,8 @@ proc setSize*(window: OsWindow, width, height: int) =
     SWP_NOACTIVATE or SWP_NOOWNERZORDER or SWP_NOMOVE or SWP_NOZORDER,
   )
 
-proc scale*(window: OsWindow): float =
-  return float(GetDpiForWindow(window.m_hwnd)) / densityPixelDpi
+proc dpi*(window: OsWindow): float =
+  return float(GetDpiForWindow(window.m_hwnd))
 
 proc setDecorated*(window: OsWindow, decorated: bool) =
   window.isDecorated = decorated
@@ -288,8 +288,8 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
         UnregisterClassA(windowClassName, nil)
 
   of WM_DPICHANGED:
-    if window.onScaleChange != nil:
-      window.onScaleChange(window, float(GetDpiForWindow(window.m_hwnd)) / densityPixelDpi)
+    if window.onDpiChange != nil:
+      window.onDpiChange(window, float(GetDpiForWindow(window.m_hwnd)))
 
   of WM_MOUSEMOVE:
     window.m_cursorX = int(GET_X_LPARAM(lparam))

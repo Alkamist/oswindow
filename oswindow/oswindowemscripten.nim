@@ -6,7 +6,8 @@ import opengl
 import ./common; export common
 import ./emscriptenapi
 
-# const canvas = "canvas.emscripten"
+const densityPixelDpi = 96.0
+
 const canvas = "#canvas"
 
 {.passL: "-s EXPORTED_RUNTIME_METHODS=ccall".}
@@ -68,7 +69,7 @@ type
     onKeyPress*: proc(window: OsWindow, key: KeyboardKey)
     onKeyRelease*: proc(window: OsWindow, key: KeyboardKey)
     onTextInput*: proc(window: OsWindow, text: string)
-    onScaleChange*: proc(window: OsWindow, scale: float)
+    onDpiChange*: proc(window: OsWindow, dpi: float)
     isOpen*: bool
     isDecorated*: bool
     isHovered*: bool
@@ -150,8 +151,8 @@ proc size*(window: OsWindow): (int, int) =
 proc setSize*(window: OsWindow, width, height: int) =
   discard
 
-proc scale*(window: OsWindow): float =
-  return float(getWindowScale())
+proc dpi*(window: OsWindow): float =
+  return float(getWindowScale()) * densityPixelDpi
 
 proc setDecorated*(window: OsWindow, decorated: bool) =
   discard

@@ -1,7 +1,5 @@
 {.experimental: "overloadableEnums".}
 
-const densityPixelDpi* = 96.0
-
 type
   ChildStatus* = enum
     None
