@@ -292,6 +292,8 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
       window.onDpiChange(window, float(GetDpiForWindow(window.m_hwnd)))
 
   of WM_MOUSEMOVE:
+    window.setCursorStyle(Arrow)
+
     window.m_cursorX = int(GET_X_LPARAM(lparam))
     window.m_cursorY = int(GET_Y_LPARAM(lparam))
 
