@@ -2,6 +2,7 @@
 {.experimental: "codeReordering".}
 
 import std/unicode
+import std/times
 import opengl
 import ./common; export common
 import ./win32api
@@ -133,6 +134,9 @@ proc setBackgroundColor*(window: OsWindow, r, g, b: float) =
 
 proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
   SetCursor(LoadCursorA(nil, style.toWin32CursorStyle))
+
+proc time*(window: OsWindow): float =
+  cpuTime()
 
 proc cursorPosition*(window: OsWindow): (int, int) =
   var pos: POINT

@@ -134,6 +134,9 @@ proc setBackgroundColor*(window: OsWindow, r, g, b: float) =
 proc setCursorStyle*(window: OsWindow, style: CursorStyle) =
   setCursorImage(style.toJsCursorStyle)
 
+proc time*(window: OsWindow): float =
+  emscripten_performance_now() * 0.001
+
 proc cursorPosition*(window: OsWindow): (int, int) =
   var event: EmscriptenMouseEvent
   discard emscripten_get_mouse_status(addr(event))
