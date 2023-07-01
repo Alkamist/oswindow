@@ -36,7 +36,7 @@ type
     m_hwnd: HWND
     m_hdc: HDC
     m_hglrc: HGLRC
-    # m_moveTimerId: UINT_PTR
+    m_sizeMoveTimerId: UINT_PTR
 
 var windowCount = 0
 const windowClassName = "DefaultWindowClass"
@@ -253,23 +253,23 @@ proc windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM): LRESULT 
 
   case msg:
 
-  of WM_PAINT:
-    # var ps: PAINTSTRUCT
-    # let hdc = BeginPaint(window.m_hwnd, addr(ps))
-    # FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW+1))
-    window.processFrame()
-    # EndPaint(window.m_hwnd, addr(ps))
-    return 0
+  # of WM_PAINT:
+  #   # var ps: PAINTSTRUCT
+  #   # let hdc = BeginPaint(window.m_hwnd, addr(ps))
+  #   # FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW+1))
+  #   window.processFrame()
+  #   # EndPaint(window.m_hwnd, addr(ps))
+  #   return 0
 
-  # of WM_ENTERSIZEMOVE:
-  #   window.m_moveTimerId = SetTimer(window.m_hwnd, 1, USER_TIMER_MINIMUM, nil)
+  of WM_ENTERSIZEMOVE:
+    window.m_sizeMoveTimerId = SetTimer(window.m_hwnd, 1, USER_TIMER_MINIMUM, nil)
 
-  # of WM_EXITSIZEMOVE:
-  #   KillTimer(window.m_hwnd, window.m_moveTimerId)
+  of WM_EXITSIZEMOVE:
+    KillTimer(window.m_hwnd, window.m_sizeMoveTimerId)
 
-  # of WM_TIMER:
-  #   if (wParam == window.m_moveTimerId):
-  #     window.processFrame()
+  of WM_TIMER:
+    if (wParam == window.m_sizeMoveTimerId):
+      window.processFrame()
 
   of WM_MOVE:
     if window.onMove != nil:
